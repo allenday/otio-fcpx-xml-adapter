@@ -674,10 +674,10 @@ class FcpxXml:
         sorted_lanes = list(set(lanes))
         sorted_lanes.sort()
         for lane in sorted_lanes:
-            sorted_items = self._sorted_items(lane, timeline_items)
+            sorted_items = utils.sort_items_by_offset(lane, timeline_items)
             track = otio.schema.Track(
                 name=lane,
-                kind=self._track_type(sorted_items)
+                kind=utils.determine_track_kind(sorted_items)
             )
 
             for item in sorted_items:
@@ -941,17 +941,8 @@ class FcpxXml:
     # --------------------
     # static methods
     # --------------------
-    @staticmethod
-    def _track_type(lane_items):
-        audio_only_items = [item for item in lane_items if item["audio_only"]]
-        if len(audio_only_items) == len(lane_items):
-            return otio.schema.TrackKind.Audio
-        return otio.schema.TrackKind.Video
-
-    @staticmethod
-    def _sorted_items(lane, otio_objects):
-        lane_items = [item for item in otio_objects if item["track"] == lane]
-        return sorted(lane_items, key=lambda k: k["offset"])
+    # _track_type removed, moved to utils.determine_track_kind
+    # _sorted_items removed, moved to utils.sort_items_by_offset
 
 
 # --------------------

@@ -279,4 +279,37 @@ def create_note_element(note):
         "note"
     )
     note_element.text = note
-    return note_element 
+    return note_element
+
+def determine_track_kind(lane_items):
+    """Determines the OTIO TrackKind based on whether all items are audio-only.
+
+    Args:
+        lane_items (list[dict]): A list of dictionaries, where each dictionary
+                                 represents an item on the track lane and must
+                                 contain an 'audio_only' boolean key.
+
+    Returns:
+        otio.schema.TrackKind: TrackKind.Audio if all items are audio-only,
+                               TrackKind.Video otherwise.
+    """
+    audio_only_items = [item for item in lane_items if item["audio_only"]]
+    if len(audio_only_items) == len(lane_items):
+        return otio.schema.TrackKind.Audio
+    return otio.schema.TrackKind.Video 
+
+def sort_items_by_offset(lane, otio_objects):
+    """Filters a list of OTIO item dictionaries by lane and sorts them by offset.
+
+    Args:
+        lane (str): The lane identifier to filter by.
+        otio_objects (list[dict]): A list of dictionaries, each representing
+                                   an OTIO item and containing at least 'track'
+                                   (lane identifier) and 'offset' keys.
+
+    Returns:
+        list[dict]: A new list containing items matching the specified lane,
+                    sorted by their 'offset'.
+    """
+    lane_items = [item for item in otio_objects if item["track"] == lane]
+    return sorted(lane_items, key=lambda k: k["offset"]) 
