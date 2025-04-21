@@ -8,6 +8,9 @@ from xml.etree import cElementTree
 from xml.dom import minidom
 from datetime import date
 from . import utils
+import logging
+
+logger = logging.getLogger(__name__)
 
 # FcpxOtio class will be added here
 
@@ -400,23 +403,58 @@ class FcpxOtio:
             clip.media_reference.target_url
         )
 
-    def _find_or_create_format_from(self, clip):
+    def _find_or_create_format_from(self, item):
+        target_rate = None
+        if isinstance(item, (otio.schema.Stack, otio.schema.Timeline, otio.schema.Track)):
+            target_rate = 30.0
+        else:
+            try:
+                item_rate = item.duration().rate
+                if item_rate and item_rate > 0:
+                    target_rate = item_rate
+                else:
+                    logger.warning("Item rate %s invalid, falling back to 30fps for item %s", item_rate, item.name if hasattr(item, 'name') else type(item))
+                    target_rate = 30.0
+            except AttributeError:
+               logger.warning("Item %s lacks duration/rate, falling back to 30fps", item.name if hasattr(item, 'name') else type(item))
+               target_rate = 30.0
+        
+        if target_rate is None:
+             logger.warning("Target rate determination failed for item %s, final fallback to 30fps", item.name if hasattr(item, 'name') else type(item))
+             target_rate = 30.0
+
         frame_duration = utils.framerate_to_frame_duration(
-            clip.duration().rate
+            target_rate
         )
-        format_element = self._format_by_frame_rate(clip.duration().rate)
+        format_element = self._format_by_frame_rate(target_rate)
         if format_element is None:
+            format_id = self._resource_id_generator()
+            width = "1920"
+            height = "1080"
+            rate_for_name = int(round(float(target_rate)))
+            format_name_str = f"FFVideoFormat{height}p{rate_for_name}"
+
             format_element = cElementTree.SubElement(
                 self.resource_element,
                 "format",
                 {
-                    "id": self._resource_id_generator(),
+                    "id": format_id,
                     "frameDuration": frame_duration,
-                    "name": self._clip_format_name(clip)
+                    "width": width,
+                    "height": height,
+                    "name": format_name_str
                 }
             )
         if format_element.get("name", "") == "":
-            format_element.set("name", self._clip_format_name(clip))
+            if 'format_name_str' not in locals(): 
+                rate_for_name = int(round(float(target_rate)))
+                format_name_str = f"FFVideoFormat1080p{rate_for_name}"
+            format_element.set("name", format_name_str)
+        if format_element.get("width") is None:
+             format_element.set("width", "1920")
+        if format_element.get("height") is None:
+             format_element.set("height", "1080")
+             
         return format_element
 
     def _add_asset(self, clip, compound_only=False):
