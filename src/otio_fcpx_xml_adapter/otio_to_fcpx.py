@@ -549,24 +549,88 @@ class FcpxOtio:
 
     def _create_asset_element(self, clip, format_element):
         target_url = utils.target_url_from_clip(clip)
-        asset = self._asset_by_path(target_url)
+        asset = self._asset_by_path(target_url) # Check if asset with this src already exists via media-rep
+        
+        # Modify asset lookup to check media-rep src instead of asset src
+        if asset is None: 
+            # Search all assets for a media-rep with the matching src
+            found = False
+            for existing_asset in self.resource_element.findall("./asset"):
+                media_rep = existing_asset.find(f".//media-rep[@src='{target_url}']")
+                if media_rep is not None:
+                    asset = existing_asset
+                    found = True
+                    # logger.debug("Found existing asset %s via media-rep src: %s", asset.get('id'), target_url)
+                    break
+            # if not found: logger.debug("No existing asset found for src: %s", target_url)
+
         if asset is not None:
+            # TODO: Potentially update existing asset's format, duration, start, hasAudio/Video?
+            # For now, just return the existing asset element.
             return asset
 
+        # --- Create New Asset Element --- 
+        asset_id = self._resource_id_generator()
+        asset_name = clip.name or f"Asset_{asset_id}" # Use clip name or generate one
+        asset_format_id = format_element.get("id")
+        asset_duration = self._find_asset_duration(clip)
+        asset_start = self._find_asset_start(clip)
+
+        # Determine hasAudio/hasVideo based on parent track kind (initial guess)
+        has_audio = "0"
+        has_video = "0"
+        parent_track = clip.parent()
+        if parent_track:
+            if parent_track.kind == otio.schema.TrackKind.Audio:
+                has_audio = "1"
+            elif parent_track.kind == otio.schema.TrackKind.Video:
+                has_video = "1"
+            elif parent_track.kind == otio.schema.TrackKind.AudioVideo: # Handle potential AudioVideo track
+                 has_audio = "1"
+                 has_video = "1"
+        else:
+             # If clip has no parent track, assume it could have both? Or probe?
+             # For now, let's assume both if parentless. This might need refinement.
+             has_audio = "1"
+             has_video = "1"
+             
+        # Create the <asset> element WITHOUT the src attribute
         asset = cElementTree.SubElement(
             self.resource_element,
             "asset",
             {
-                "name": clip.name,
-                "src": target_url,
-                "format": format_element.get("id"),
-                "id": self._resource_id_generator(),
-                "duration": self._find_asset_duration(clip),
-                "start": self._find_asset_start(clip),
-                "hasAudio": "0",
-                "hasVideo": "0"
+                "id": asset_id,
+                "name": asset_name,
+                "format": asset_format_id,
+                "duration": asset_duration,
+                "start": asset_start,
+                "hasAudio": has_audio,
+                "hasVideo": has_video
+                # Add other potential attributes like audioSources, audioChannels, audioRate if known/probed
             }
         )
+
+        # Create the required <media-rep> child element
+        cElementTree.SubElement(
+            asset,
+            "media-rep",
+            {
+                "kind": "original-media", # Standard kind
+                "src": target_url # Put the src URL here
+                # Optional: Add 'sig' attribute if a unique signature can be generated
+            }
+        )
+        
+        # Add optional metadata if available (example)
+        if clip.media_reference and not clip.media_reference.is_missing_reference:
+             fcpx_metadata_dict = clip.media_reference.metadata.get("fcpx", {})
+             metadata_list = fcpx_metadata_dict.get("metadata", None) 
+             if metadata_list:
+                 metadata_element = utils.create_metadata_elements(metadata_list)
+                 if metadata_element is not None:
+                     asset.append(metadata_element)
+
+        # logger.debug("Created new asset %s for src: %s", asset_id, target_url)
         return asset
 
     def _add_compound_clip(self, item):
