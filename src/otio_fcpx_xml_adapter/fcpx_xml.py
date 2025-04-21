@@ -140,7 +140,7 @@ class FcpxOtio:
 
     def _track_for_spine(self, track, lane_id, spine, compound):
         for child in self._lanable_items(track.find_children()):
-            if self._item_in_compound_clip(child) and not compound:
+            if utils.item_in_compound_clip(child) and not compound:
                 continue
             child_element = self._element_for_item(
                 child,
@@ -461,13 +461,13 @@ class FcpxOtio:
         if (clip.media_reference and not
            clip.media_reference.is_missing_reference):
             fcpx_metadata = clip.media_reference.metadata.get("fcpx", {})
-            note_element = self._create_note_element(
+            note_element = utils.create_note_element(
                 fcpx_metadata.get("note", None)
             )
-            keyword_elements = self._create_keyword_elements(
+            keyword_elements = utils.create_keyword_elements(
                 fcpx_metadata.get("keywords", [])
             )
-            metadata_element = self._create_metadata_elements(
+            metadata_element = utils.create_metadata_elements(
                 fcpx_metadata.get("metadata", None)
             )
 
@@ -564,46 +564,6 @@ class FcpxOtio:
     # --------------------
     # static methods
     # --------------------
-
-    @staticmethod
-    def _item_in_compound_clip(item):
-        stack_count = 0
-        parent = item.parent()
-        while parent is not None:
-            if parent.schema_name() == "Stack":
-                stack_count += 1
-            parent = parent.parent()
-        return stack_count > 1
-
-    @staticmethod
-    def _create_metadata_elements(metadata):
-        if metadata is None:
-            return None
-        metadata_element = cElementTree.Element(
-            "metadata"
-        )
-        for metadata_dict in metadata:
-            cElementTree.SubElement(
-                metadata_element,
-                "md",
-                {
-                    "key": list(metadata_dict.keys())[0],
-                    "value": list(metadata_dict.values())[0]
-                }
-            )
-        return metadata_element
-
-    @staticmethod
-    def _create_keyword_elements(keywords):
-        keyword_elements = []
-        for keyword_dict in keywords:
-            keyword_elements.append(
-                cElementTree.Element(
-                    "keyword",
-                    dict(keyword_dict)
-                )
-            )
-        return keyword_elements
 
     @staticmethod
     def _create_note_element(note):

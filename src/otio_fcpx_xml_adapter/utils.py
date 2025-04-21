@@ -198,3 +198,85 @@ def compound_clip_name(compound_clip, resource_id):
     if compound_clip.name:
         return compound_clip.name
     return f"compound_clip_{resource_id}" 
+
+def item_in_compound_clip(item):
+    """Checks if an OTIO item is nested within more than one Stack.
+
+    Args:
+        item (otio.core.Item): The OTIO item to check.
+
+    Returns:
+        bool: True if the item is nested within more than one Stack, False otherwise.
+    """
+    stack_count = 0
+    parent = item.parent()
+    while parent is not None:
+        if parent.schema_name() == "Stack":
+            stack_count += 1
+        parent = parent.parent()
+    return stack_count > 1 
+
+def create_metadata_elements(metadata):
+    """Creates an XML 'metadata' element from a list of metadata dictionaries.
+
+    Args:
+        metadata (list[dict]): A list where each dict represents one metadata item
+                                (e.g., [{'key': 'value'}]).
+
+    Returns:
+        xml.etree.cElementTree.Element or None: The 'metadata' XML element, or None
+                                                  if input is None.
+    """
+    if metadata is None:
+        return None
+    metadata_element = cElementTree.Element(
+        "metadata"
+    )
+    for metadata_dict in metadata:
+        cElementTree.SubElement(
+            metadata_element,
+            "md",
+            {
+                "key": list(metadata_dict.keys())[0],
+                "value": list(metadata_dict.values())[0]
+            }
+        )
+    return metadata_element
+
+def create_keyword_elements(keywords):
+    """Creates a list of XML 'keyword' elements from a list of keyword dictionaries.
+
+    Args:
+        keywords (list[dict]): A list where each dict represents keyword attributes
+                               (e.g., [{'start': '0s', 'duration': '1s', 'value': 'foo'}]).
+
+    Returns:
+        list[xml.etree.cElementTree.Element]: A list of 'keyword' XML elements.
+    """
+    keyword_elements = []
+    for keyword_dict in keywords:
+        keyword_elements.append(
+            cElementTree.Element(
+                "keyword",
+                dict(keyword_dict)
+            )
+        )
+    return keyword_elements
+
+def create_note_element(note):
+    """Creates an XML 'note' element from a string.
+
+    Args:
+        note (str or None): The text content for the note.
+
+    Returns:
+        xml.etree.cElementTree.Element or None: The 'note' XML element, or None
+                                                  if the input note is empty or None.
+    """
+    if not note:
+        return None
+    note_element = cElementTree.Element(
+        "note"
+    )
+    note_element.text = note
+    return note_element 
