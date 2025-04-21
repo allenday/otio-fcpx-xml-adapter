@@ -305,11 +305,13 @@ def sort_items_by_offset(lane, otio_objects):
         lane (str): The lane identifier to filter by.
         otio_objects (list[dict]): A list of dictionaries, each representing
                                    an OTIO item and containing at least 'track'
-                                   (lane identifier) and 'offset' keys.
+                                   (lane identifier) and 'offset'
+                                   (otio.opentime.RationalTime) keys.
 
     Returns:
         list[dict]: A new list containing items matching the specified lane,
                     sorted by their 'offset'.
     """
     lane_items = [item for item in otio_objects if item["track"] == lane]
+    # Sort by the RationalTime value of the offset
     return sorted(lane_items, key=lambda k: k["offset"]) 
