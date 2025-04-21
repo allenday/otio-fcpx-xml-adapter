@@ -184,3 +184,17 @@ def target_url_from_clip(clip):
         return clip.media_reference.target_url
     # Provide a default fallback if no valid target_url exists
     return f"file:///tmp/{clip.name}.mov" # Assume .mov or determine based on context if possible 
+
+def compound_clip_name(compound_clip, resource_id):
+    """Generates a name for a compound clip, using its existing name or a default.
+
+    Args:
+        compound_clip (otio.schema.Stack): The compound clip (Stack) object.
+        resource_id (str): The resource ID to use for the default name.
+
+    Returns:
+        str: The name for the compound clip.
+    """
+    if compound_clip.name:
+        return compound_clip.name
+    return f"compound_clip_{resource_id}" 

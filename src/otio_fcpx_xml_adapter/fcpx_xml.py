@@ -510,7 +510,7 @@ class FcpxOtio:
             self.resource_element,
             "media",
             {
-                "name": self._compound_clip_name(item, resource_id),
+                "name": utils.compound_clip_name(item, resource_id),
                 "id": resource_id
             }
         )
@@ -564,12 +564,6 @@ class FcpxOtio:
     # --------------------
     # static methods
     # --------------------
-
-    @staticmethod
-    def _compound_clip_name(compound_clip, resource_id):
-        if compound_clip.name:
-            return compound_clip.name
-        return f"compound_clip_{resource_id}"
 
     @staticmethod
     def _item_in_compound_clip(item):
