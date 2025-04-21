@@ -2,126 +2,20 @@
 # Copyright Contributors to the OpenTimelineIO project
 
 """OpenTimelineIO Final Cut Pro X XML Adapter. """
-import os
-import subprocess
+# import os
+# import subprocess
 from xml.etree import cElementTree
 from xml.dom import minidom
-from fractions import Fraction
+# from fractions import Fraction
 from datetime import date
-from urllib.parse import unquote
+# import urllib.parse import unquote
 
 import opentimelineio as otio
+from otio_fcpx_xml_adapter import utils
 
 META_NAMESPACE = "fcpx_xml"
 
 COMPOSABLE_ELEMENTS = ("video", "audio", "ref-clip", "asset-clip")
-
-FRAMERATE_FRAMEDURATION = {23.98: "1001/24000s",
-                           24: "25/600s",
-                           25: "1/25s",
-                           29.97: "1001/30000s",
-                           30: "100/3000s",
-                           50: "1/50s",
-                           59.94: "1001/60000s",
-                           60: "1/60s"}
-
-
-def format_name(frame_rate, path):
-    """
-    Helper to get the formatName used in FCP X XML format elements. This
-    uses ffprobe to get the frame size of the the clip at the provided path.
-
-    Args:
-        frame_rate (int): The frame rate of the clip at the provided path
-        path (str): The path to the clip to probe
-
-    Returns:
-        str: The format name. If empty, then ffprobe couldn't find the item
-    """
-
-    path = path.replace("file://", "")
-    path = unquote(path)
-    if not os.path.exists(path):
-        return ""
-
-    try:
-        frame_size = subprocess.check_output(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=height,width",
-                "-of",
-                "csv=s=x:p=0",
-                path
-            ]
-        ).decode("utf-8")
-    except (subprocess.CalledProcessError, OSError):
-        frame_size = ""
-
-    if not frame_size:
-        return ""
-
-    frame_size = frame_size.rstrip()
-
-    if "1920" in frame_size:
-        frame_size = "1080"
-
-    if frame_size.endswith("1280"):
-        frame_size = "720"
-
-    return f"FFVideoFormat{frame_size}p{frame_rate}"
-
-
-def to_rational_time(rational_number, fps):
-    """
-    This converts a rational number value to an otio RationalTime object
-
-    Args:
-        rational_number (str): This is a rational number from an FCP X XML
-        fps (int): The frame rate to use for calculating the rational time
-
-    Returns:
-        RationalTime: A RationalTime object
-    """
-
-    if rational_number == "0s" or rational_number is None:
-        frames = 0
-    else:
-        parts = rational_number.split("/")
-        if len(parts) > 1:
-            frames = int(
-                float(parts[0]) / float(parts[1].replace("s", "")) * float(fps)
-            )
-        else:
-            frames = int(float(parts[0].replace("s", "")) * float(fps))
-
-    return otio.opentime.RationalTime(frames, int(fps))
-
-
-def from_rational_time(rational_time):
-    """
-    This converts a RationalTime object to a rational number as a string
-
-    Args:
-        rational_time (RationalTime): a rational time object
-
-    Returns:
-        str: A rational number as a string
-    """
-
-    if int(rational_time.value) == 0:
-        return "0s"
-    result = Fraction(
-        float(rational_time.value) / float(rational_time.rate)
-    ).limit_denominator()
-    if str(result.denominator) == "1":
-        return f"{result.numerator}s"
-    return f"{result.numerator}/{result.denominator}s"
-
 
 class FcpxOtio:
     """
@@ -219,7 +113,7 @@ class FcpxOtio:
         sequence_element = cElementTree.Element(
             "sequence",
             {
-                "duration": self._calculate_rational_number(
+                "duration": utils.calculate_rational_number(
                     stack.duration().value,
                     stack.duration().rate
                 ),
@@ -271,7 +165,7 @@ class FcpxOtio:
             )
             child_element.set(
                 "offset",
-                from_rational_time(offset)
+                utils.from_rational_time(offset)
             )
 
             parent_element.append(child_element)
@@ -285,11 +179,11 @@ class FcpxOtio:
                 continue
             if item.tag == "gap" and item.find("./audio") is not None:
                 continue
-            offset = to_rational_time(
+            offset = utils.to_rational_time(
                 item.get("offset"),
                 self._frame_rate_from_element(item, format_id)
             )
-            duration = to_rational_time(
+            duration = utils.to_rational_time(
                 item.get("duration"),
                 self._frame_rate_from_element(item, format_id)
             )
@@ -301,16 +195,16 @@ class FcpxOtio:
         return None
 
     def _offset_based_on_parent(self, child, parent, default_format_id):
-        parent_offset = to_rational_time(
+        parent_offset = utils.to_rational_time(
             parent.get("offset"),
             self._frame_rate_from_element(parent, default_format_id)
         )
-        child_offset = to_rational_time(
+        child_offset = utils.to_rational_time(
             child.get("offset"),
             self._frame_rate_from_element(child, default_format_id)
         )
 
-        parent_start = to_rational_time(
+        parent_start = utils.to_rational_time(
             parent.get("start"),
             self._frame_rate_from_element(parent, default_format_id)
         )
@@ -346,7 +240,7 @@ class FcpxOtio:
 
     def _element_for_item(self, item, lane, ref_only=False, compound=False):
         element = None
-        duration = self._calculate_rational_number(
+        duration = utils.calculate_rational_number(
             item.duration().value,
             item.duration().rate
         )
@@ -366,8 +260,8 @@ class FcpxOtio:
             element.set("lane", str(lane))
         for marker in item.markers:
             marker_attribs = {
-                "start": from_rational_time(marker.marked_range.start_time),
-                "duration": from_rational_time(marker.marked_range.duration),
+                "start": utils.from_rational_time(marker.marked_range.start_time),
+                "duration": utils.from_rational_time(marker.marked_range.duration),
                 "value": marker.name
             }
             marker_element = cElementTree.Element(
@@ -392,13 +286,13 @@ class FcpxOtio:
             "clip",
             {
                 "name": item.name,
-                "offset": from_rational_time(
+                "offset": utils.from_rational_time(
                     item.trimmed_range_in_parent().start_time
                 ),
                 "duration": duration
             }
         )
-        start = from_rational_time(item.source_range.start_time)
+        start = utils.from_rational_time(item.source_range.start_time)
         if start != "0s":
             element.set("start", str(start))
         if item.parent().kind == otio.schema.TrackKind.Video:
@@ -440,7 +334,7 @@ class FcpxOtio:
             {
                 "name": "Gap",
                 "duration": duration,
-                "offset": from_rational_time(
+                "offset": utils.from_rational_time(
                     item.trimmed_range_in_parent().start_time
                 ),
                 "start": "3600s"
@@ -462,13 +356,13 @@ class FcpxOtio:
         if not ref_only:
             element.set(
                 "offset",
-                from_rational_time(
+                utils.from_rational_time(
                     item.trimmed_range_in_parent().start_time
                 )
             )
             element.set(
                 "start",
-                from_rational_time(item.source_range.start_time)
+                utils.from_rational_time(item.source_range.start_time)
             )
         if item.parent() and item.parent().kind == otio.schema.TrackKind.Audio:
             element.set("srcEnable", "audio")
@@ -477,11 +371,11 @@ class FcpxOtio:
     def _find_asset_duration(self, item):
         if (item.media_reference and
                 not item.media_reference.is_missing_reference):
-            return self._calculate_rational_number(
+            return utils.calculate_rational_number(
                 item.media_reference.available_range.duration.value,
                 item.media_reference.available_range.duration.rate
             )
-        return self._calculate_rational_number(
+        return utils.calculate_rational_number(
             item.duration().value,
             item.duration().rate
         )
@@ -489,11 +383,11 @@ class FcpxOtio:
     def _find_asset_start(self, item):
         if (item.media_reference and
                 not item.media_reference.is_missing_reference):
-            return self._calculate_rational_number(
+            return utils.calculate_rational_number(
                 item.media_reference.available_range.start_time.value,
                 item.media_reference.available_range.start_time.rate
             )
-        return self._calculate_rational_number(
+        return utils.calculate_rational_number(
             item.source_range.start_time.value,
             item.source_range.start_time.rate
         )
@@ -507,13 +401,13 @@ class FcpxOtio:
         if clip.media_reference.is_missing_reference:
             return ""
 
-        return format_name(
+        return utils.format_name(
             clip.duration().rate,
             clip.media_reference.target_url
         )
 
     def _find_or_create_format_from(self, clip):
-        frame_duration = self._framerate_to_frame_duration(
+        frame_duration = utils.framerate_to_frame_duration(
             clip.duration().rate
         )
         format_element = self._format_by_frame_rate(clip.duration().rate)
@@ -586,7 +480,7 @@ class FcpxOtio:
                 a_clip.append(metadata_element)
 
     def _create_asset_element(self, clip, format_element):
-        target_url = self._target_url_from_clip(clip)
+        target_url = utils.target_url_from_clip(clip)
         asset = self._asset_by_path(target_url)
         if asset is not None:
             return asset
@@ -657,7 +551,7 @@ class FcpxOtio:
         return self.resource_element.find(f"./media[@id='{media_id}']")
 
     def _format_by_frame_rate(self, frame_rate):
-        frame_duration = self._framerate_to_frame_duration(frame_rate)
+        frame_duration = utils.framerate_to_frame_duration(frame_rate)
         return self.resource_element.find(
             f"./format[@frameDuration='{frame_duration}']"
         )
@@ -670,27 +564,6 @@ class FcpxOtio:
     # --------------------
     # static methods
     # --------------------
-
-    @staticmethod
-    def _framerate_to_frame_duration(framerate):
-        frame_duration = FRAMERATE_FRAMEDURATION.get(int(framerate), "")
-        if not frame_duration:
-            frame_duration = FRAMERATE_FRAMEDURATION.get(float(framerate), "")
-        return frame_duration
-
-    @staticmethod
-    def _target_url_from_clip(clip):
-        if (clip.media_reference and
-                not clip.media_reference.is_missing_reference):
-            return clip.media_reference.target_url
-        return f"file:///tmp/{clip.name}"
-
-    @staticmethod
-    def _calculate_rational_number(duration, rate):
-        if int(duration) == 0:
-            return "0s"
-        result = Fraction(float(duration) / float(rate)).limit_denominator()
-        return f"{result.numerator}/{result.denominator}s"
 
     @staticmethod
     def _compound_clip_name(compound_clip, resource_id):
@@ -1003,18 +876,18 @@ class FcpxXml:
         if not asset.get("src", ""):
             return otio.schema.MissingReference()
 
+        format_id = asset.get("format", default_format)
+        format_element = self._format_by_id(format_id)
+        rate = utils.format_to_rate(format_element)
+
         available_range = otio.opentime.TimeRange(
-            start_time=to_rational_time(
+            start_time=utils.to_rational_time(
                 asset.get("start"),
-                self._format_frame_rate(
-                    asset.get("format", default_format)
-                )
+                rate
             ),
-            duration=to_rational_time(
+            duration=utils.to_rational_time(
                 asset.get("duration"),
-                self._format_frame_rate(
-                    asset.get("format", default_format)
-                )
+                rate
             )
         )
         asset_clip = self._assetclip_by_ref(asset_id)
@@ -1076,11 +949,11 @@ class FcpxXml:
 
     def _time_range(self, element, format_id):
         return otio.opentime.TimeRange(
-            start_time=to_rational_time(
+            start_time=utils.to_rational_time(
                 element.get("start", "0s"),
                 self._format_frame_rate(format_id)
             ),
-            duration=to_rational_time(
+            duration=utils.to_rational_time(
                 element.get("duration"),
                 self._format_frame_rate(format_id)
             )

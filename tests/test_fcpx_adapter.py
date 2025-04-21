@@ -8,7 +8,7 @@ import unittest
 import unittest.mock
 import opentimelineio as otio
 import opentimelineio.test_utils as otio_test_utils
-from otio_fcpx_xml_adapter.fcpx_xml import format_name
+from otio_fcpx_xml_adapter import utils
 
 
 SAMPLE_LIBRARY_XML = os.path.join(
@@ -167,7 +167,7 @@ class AdaptersFcpXXmlTest(unittest.TestCase, otio_test_utils.OTIOAssertions):
         with mock_patch(subprocess, 'check_output', return_value=rvalue):
             with mock_patch(os.path, 'exists', return_value=True):
                 self.assertEqual(
-                    format_name(25, "file:///dummy.me"),
+                    utils.format_name(25, "file:///dummy.me"),
                     'FFVideoFormat640x360p25'
                 )
 
