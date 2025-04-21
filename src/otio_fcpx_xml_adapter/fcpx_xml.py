@@ -42,15 +42,19 @@ def read_from_string(input_str):
     return FcpxXml(input_str).to_otio()
 
 
-def write_to_string(input_otio):
+def write_to_string(input_otio, sequence_rate=None, **kwargs):
     """
-    Necessary write method for otio adapter
+    Convert an OTIO timeline to an FCPX XML string.
 
     Args:
-        input_otio (OpenTimeline): An OpenTimeline object
+        input_otio (otio.schema.Timeline): An OpenTimelineIO Timeline object.
+        sequence_rate (float, optional): Target frame rate (e.g., 30.0, 120.0)
+                                         for the main sequence format definition.
+                                         If None, a default (e.g., 30fps) will be used.
+        **kwargs: Additional arguments (currently ignored).
 
     Returns:
-        str: The string contents of an FCP X XML
+        str: The string contents of an FCP X XML file.
     """
-    # Use the imported FcpxOtio
-    return FcpxOtio(input_otio).to_xml()
+    # Use the imported FcpxOtio, passing the sequence_rate
+    return FcpxOtio(input_otio, sequence_rate=sequence_rate).to_xml()

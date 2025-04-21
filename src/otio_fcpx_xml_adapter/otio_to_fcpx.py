@@ -20,9 +20,18 @@ class FcpxOtio:
     FCP X XML
     """
 
-    def __init__(self, otio_timeline):
+    def __init__(self, otio_timeline, sequence_rate=None):
         self.otio_timeline = otio_timeline
-        self.fcpx_xml = cElementTree.Element("fcpxml", version="1.8")
+        # Store the user's preference, converting to float if possible
+        try:
+            self.sequence_rate = float(sequence_rate) if sequence_rate is not None else None
+            if self.sequence_rate is not None:
+                 logger.info("FcpxOtio initialized with sequence_rate: %s", self.sequence_rate)
+        except (ValueError, TypeError):
+            logger.warning("Invalid sequence_rate '%s' provided to FcpxOtio, ignoring.", sequence_rate)
+            self.sequence_rate = None
+            
+        self.fcpx_xml = cElementTree.Element("fcpxml", version="1.9") # Using 1.9 for wider compatibility
         self.resource_element = cElementTree.SubElement(
             self.fcpx_xml,
             "resources"
@@ -405,34 +414,58 @@ class FcpxOtio:
 
     def _find_or_create_format_from(self, item):
         target_rate = None
-        if isinstance(item, (otio.schema.Stack, otio.schema.Timeline, otio.schema.Track)):
-            target_rate = 30.0
+        is_sequence_like = isinstance(item, (otio.schema.Stack, otio.schema.Timeline, otio.schema.Track))
+
+        # --- Determine Target Rate --- 
+        if is_sequence_like and self.sequence_rate is not None:
+            # Use user-provided rate for sequences if valid
+            target_rate = self.sequence_rate
+            # logger.info("Using user-specified sequence_rate: %s", target_rate)
+        elif is_sequence_like:
+            # Default rate for sequences if user didn't specify one
+            target_rate = 30.0 # Default to 30fps for sequences
+            # logger.debug("Using default sequence_rate: %s", target_rate)
         else:
+            # Logic for non-sequence items (e.g., Clips)
             try:
                 item_rate = item.duration().rate
                 if item_rate and item_rate > 0:
+                    # Use the item's rate if it seems valid
+                    # Optional: Could add check here if rate is outside a reasonable video/audio range
                     target_rate = item_rate
                 else:
-                    logger.warning("Item rate %s invalid, falling back to 30fps for item %s", item_rate, item.name if hasattr(item, 'name') else type(item))
-                    target_rate = 30.0
+                    logger.warning("Invalid item rate %s for %s, falling back to 30fps.", item_rate, item.name if hasattr(item, 'name') else type(item))
+                    target_rate = 30.0 # Fallback if item rate is invalid
             except AttributeError:
-               logger.warning("Item %s lacks duration/rate, falling back to 30fps", item.name if hasattr(item, 'name') else type(item))
+               # Fallback if item lacks duration/rate
+               logger.warning("Item %s lacks duration/rate, falling back to 30fps.", item.name if hasattr(item, 'name') else type(item))
                target_rate = 30.0
         
-        if target_rate is None:
-             logger.warning("Target rate determination failed for item %s, final fallback to 30fps", item.name if hasattr(item, 'name') else type(item))
+        # Final fallback check for safety
+        if target_rate is None or target_rate <= 0:
+             logger.warning("Target rate determination failed (%s), using final fallback 30.0", target_rate)
              target_rate = 30.0
+        # --- END Rate Determination ---
 
-        frame_duration = utils.framerate_to_frame_duration(
-            target_rate
+        # --- Find or Create Format Element ---
+        # Convert the determined rate into the FCPXML frameDuration string
+        frame_duration = utils.framerate_to_frame_duration(target_rate)
+        
+        # Try to find an existing format using the *frame_duration* string (more reliable than float rate)
+        format_element = self.resource_element.find(
+            f"./format[@frameDuration='{frame_duration}']"
         )
-        format_element = self._format_by_frame_rate(target_rate)
+
         if format_element is None:
+            # Create new format if needed
             format_id = self._resource_id_generator()
-            width = "1920"
+            width = "1920"  # Default dimensions - Consider making configurable later
             height = "1080"
-            rate_for_name = int(round(float(target_rate)))
-            format_name_str = f"FFVideoFormat{height}p{rate_for_name}"
+            # Generate a name based on resolution and rate
+            # Round rate for name consistency (e.g., 29.97 becomes 30)
+            rate_for_name = int(round(float(target_rate))) 
+            format_name_str = f"FFVideoFormat{height}p{rate_for_name}" 
+            color_space = "1-1-1 (Rec. 709)" # Default color space
 
             format_element = cElementTree.SubElement(
                 self.resource_element,
@@ -442,18 +475,21 @@ class FcpxOtio:
                     "frameDuration": frame_duration,
                     "width": width,
                     "height": height,
-                    "name": format_name_str
+                    "name": format_name_str,
+                    "colorSpace": color_space # Add color space
                 }
             )
-        if format_element.get("name", "") == "":
-            if 'format_name_str' not in locals(): 
-                rate_for_name = int(round(float(target_rate)))
-                format_name_str = f"FFVideoFormat1080p{rate_for_name}"
-            format_element.set("name", format_name_str)
-        if format_element.get("width") is None:
-             format_element.set("width", "1920")
-        if format_element.get("height") is None:
-             format_element.set("height", "1080")
+            # logger.debug("Created new format %s (rate: %s, duration: %s)", format_id, target_rate, frame_duration)
+        else:
+            # logger.debug("Found existing format %s for rate %s (duration: %s)", format_element.get('id'), target_rate, frame_duration)
+            # Ensure existing found format has necessary attributes
+            if format_element.get("width") is None: format_element.set("width", "1920")
+            if format_element.get("height") is None: format_element.set("height", "1080")
+            if format_element.get("name") is None:
+                 rate_for_name = int(round(float(target_rate)))
+                 format_name_str = f"FFVideoFormat1080p{rate_for_name}"
+                 format_element.set("name", format_name_str)
+            if format_element.get("colorSpace") is None: format_element.set("colorSpace", "1-1-1 (Rec. 709)")
              
         return format_element
 
